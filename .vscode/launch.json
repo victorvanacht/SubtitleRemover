@@ -1,0 +1,70 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Train (Default)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--train-root", ".\\cocodataset\\train",
+                "--validate-root", ".\\cocodataset\\validate",
+                "--batch-size", "8",
+                "--epochs", "20",
+                "--num-workers", "0"
+            ]
+        },
+        {
+            "name": "Train (Custom Settings)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--train-root", ".\\cocodataset\\train",
+                "--validate-root", ".\\cocodataset\\validate",
+                "--batch-size", "16",
+                "--epochs", "50",
+                "--num-workers", "4",
+                "--learning-rate", "1e-3"
+            ]
+        },
+        {
+            "name": "Inference (Best Model)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/infere.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--data-root", ".\\cocodataset\\validate",
+                "--checkpoint", ".\\artifacts\\best.pt",
+                "--output", ".\\artifacts\\inference_preview.png",
+                "--num-examples", "4",
+                "--batch-size", "4",
+                "--num-workers", "0",
+                "--threshold", "0.5"
+            ]
+        },
+        {
+            "name": "Inference (Last Model)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/infere.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--data-root", ".\\cocodataset\\validate",
+                "--checkpoint", ".\\artifacts\\last.pt",
+                "--output", ".\\artifacts\\inference_preview.png",
+                "--num-examples", "4",
+                "--batch-size", "4",
+                "--num-workers", "0",
+                "--threshold", "0.5"
+            ]
+        }
+    ]
+}
