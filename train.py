@@ -178,6 +178,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--num-workers", type=int, default=0)
 	parser.add_argument("--seed", type=int, default=1337)
 	parser.add_argument("--save-path", type=Path, default=Path(".\\artifacts\\last.pt"))
+	parser.add_argument("--best-path", type=Path, default=Path(".\\artifacts\\best.pt"))
 	parser.add_argument("--base-channels", type=int, default=64)
 	parser.add_argument("--amp", action="store_true", help="Enable mixed-precision training when CUDA is available.")
 	parser.add_argument(
@@ -293,19 +294,31 @@ def save_checkpoint(
 	args: argparse.Namespace,
 	epoch: int,
 	best_val_loss: float,
+	save_as_best: bool = False,
 ) -> None:
+	# Save as last checkpoint (includes optimizer state for resuming training)
+	last_checkpoint = {
+		"epoch": epoch,
+		"model_state_dict": model.state_dict(),
+		"optimizer_state_dict": optimizer.state_dict(),
+		"best_val_loss": best_val_loss,
+		"image_size": [args.width, args.height],
+		"base_channels": args.base_channels,
+	}
 	args.save_path.parent.mkdir(parents=True, exist_ok=True)
-	torch.save(
-		{
+	torch.save(last_checkpoint, args.save_path)
+	
+	# Save as best checkpoint if validation loss improved (excludes optimizer state for smaller file size)
+	if save_as_best:
+		best_checkpoint = {
 			"epoch": epoch,
 			"model_state_dict": model.state_dict(),
-			"optimizer_state_dict": optimizer.state_dict(),
 			"best_val_loss": best_val_loss,
 			"image_size": [args.width, args.height],
 			"base_channels": args.base_channels,
-		},
-		args.save_path,
-	)
+		}
+		args.best_path.parent.mkdir(parents=True, exist_ok=True)
+		torch.save(best_checkpoint, args.best_path)
 
 
 def try_resume_from_checkpoint(
@@ -391,10 +404,15 @@ def main() -> None:
 			f"val_loss={val_loss:.4f} val_dice={val_dice:.4f}"
 		)
 
+		# Always save as last checkpoint
+		save_checkpoint(model=model, optimizer=optimizer, args=args, epoch=epoch, best_val_loss=best_val_loss, save_as_best=False)
+		print(f"Saved checkpoint to: {args.save_path}")
+		
+		# Save as best checkpoint if validation loss improved
 		if val_loss < best_val_loss:
 			best_val_loss = val_loss
-			save_checkpoint(model=model, optimizer=optimizer, args=args, epoch=epoch, best_val_loss=best_val_loss)
-			print(f"Saved checkpoint to: {args.save_path}")
+			save_checkpoint(model=model, optimizer=optimizer, args=args, epoch=epoch, best_val_loss=best_val_loss, save_as_best=True)
+			print(f"Saved best checkpoint to: {args.best_path}")
 
 
 if __name__ == "__main__":

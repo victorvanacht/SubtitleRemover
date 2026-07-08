@@ -14,7 +14,7 @@ from train import SUBTITLED_CHANNEL_END, SUBTITLED_CHANNEL_START, UNetMaskEstima
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Run U-Net inference and save a visual comparison grid.")
 	parser.add_argument("--data-root", type=Path, default=Path(".\\cocodataset\\validate"))
-	parser.add_argument("--checkpoint", type=Path, default=Path(".\\artifacts\\last.pt"))
+	parser.add_argument("--checkpoint", type=Path, default=Path(".\\artifacts\\best.pt"))
 	parser.add_argument("--output", type=Path, default=Path(".\\artifacts\\inference_preview.png"))
 	parser.add_argument("--num-examples", type=int, default=4)
 	parser.add_argument("--batch-size", type=int, default=4)

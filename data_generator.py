@@ -63,7 +63,7 @@ class SubtitleTrainingDataset(Dataset[SubtitleSample]):
 		)
 
 		original_tensor = self._to_float_tensor(original_array)
-		mask_tensor = torch.from_numpy(subtitle["mask_array"]).unsqueeze(0).float() / 255.0
+		mask_tensor = torch.from_numpy(subtitle["mask_array"].copy()).unsqueeze(0).float() / 255.0
 		composite_tensor = self._to_float_tensor(composite)
 		features = torch.cat((original_tensor, mask_tensor, composite_tensor), dim=0)
 
@@ -88,7 +88,7 @@ class SubtitleTrainingDataset(Dataset[SubtitleSample]):
 
 	@staticmethod
 	def _to_float_tensor(image_array: np.ndarray) -> torch.Tensor:
-		return torch.from_numpy(image_array).permute(2, 0, 1).float() / 255.0
+		return torch.from_numpy(image_array.copy()).permute(2, 0, 1).float() / 255.0
 
 	@staticmethod
 	def _collect_font_paths() -> list[Path]:
