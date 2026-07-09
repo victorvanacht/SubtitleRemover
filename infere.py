@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
+from scipy import ndimage
 
 from data_generator import build_dataloader
 from train_mask_estimator import SUBTITLED_CHANNEL_END, SUBTITLED_CHANNEL_START, UNetMaskEstimator
@@ -46,6 +47,31 @@ def blend_images_with_mask(subtitled: torch.Tensor, inpainted: torch.Tensor, mas
 	"""
 	blended = subtitled * (1.0 - mask) + inpainted * mask
 	return blended
+
+
+def dilate_mask(mask: torch.Tensor, iterations: int = 1) -> torch.Tensor:
+	"""Dilate the mask by 1 pixel in all directions for each iteration.
+	
+	Args:
+		mask: Tensor of shape (batch_size, 1, height, width)
+		iterations: Number of dilation iterations (default: 1 for 1 pixel expansion)
+	
+	Returns:
+		Dilated mask tensor
+	"""
+	kernel = ndimage.generate_binary_structure(2, 2)  # 3x3 kernel with 8-connectivity
+	dilated_mask = mask.clone()
+	
+	for batch_idx in range(dilated_mask.shape[0]):
+		# Extract single image mask (remove batch and channel dims for processing)
+		mask_2d = dilated_mask[batch_idx, 0].numpy()
+		# Apply dilation
+		for _ in range(iterations):
+			mask_2d = ndimage.binary_dilation(mask_2d, structure=kernel).astype(np.float32)
+		# Put back in tensor
+		dilated_mask[batch_idx, 0] = torch.from_numpy(mask_2d)
+	
+	return dilated_mask
 
 
 def load_model(checkpoint_mask_estimator_path: Path, device: torch.device) -> UNetMaskEstimator:
@@ -182,6 +208,10 @@ def main() -> None:
 		mask_logits = mask_model(subtitled_images.to(device, non_blocking=True))
 		mask_probs = torch.sigmoid(mask_logits).cpu()
 	pred_masks = (mask_probs >= args.threshold).float()
+	
+	# Dilate mask by 1 pixel in all directions for better edge coverage
+	print("Dilating masks...")
+	pred_masks = dilate_mask(pred_masks, iterations=1)
 	
 	# Step 2: Inpaint using infiller model (mask + subtitled RGB as input)
 	print("Inpainting pixels...")
