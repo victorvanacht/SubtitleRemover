@@ -8,13 +8,13 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 
 from data_generator import build_dataloader
-from train import SUBTITLED_CHANNEL_END, SUBTITLED_CHANNEL_START, UNetMaskEstimator
+from train_mask_estimator import SUBTITLED_CHANNEL_END, SUBTITLED_CHANNEL_START, UNetMaskEstimator
 
 
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Run U-Net inference and save a visual comparison grid.")
 	parser.add_argument("--data-root", type=Path, default=Path(".\\cocodataset\\validate"))
-	parser.add_argument("--checkpoint", type=Path, default=Path(".\\artifacts\\best.pt"))
+	parser.add_argument("--checkpoint_mask_estimator", type=Path, default=Path(".\\artifacts\\mask_estimator_best.pt"))
 	parser.add_argument("--output", type=Path, default=Path(".\\artifacts\\inference_preview.png"))
 	parser.add_argument("--num-examples", type=int, default=4)
 	parser.add_argument("--batch-size", type=int, default=4)
@@ -37,16 +37,16 @@ def _tensor_mask_to_uint8(mask_tensor: torch.Tensor) -> np.ndarray:
 	return (array * 255.0).round().astype(np.uint8)
 
 
-def load_model(checkpoint_path: Path, device: torch.device) -> UNetMaskEstimator:
-	if not checkpoint_path.exists():
-		raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+def load_model(checkpoint_mask_estimator_path: Path, device: torch.device) -> UNetMaskEstimator:
+	if not checkpoint_mask_estimator_path.exists():
+		raise FileNotFoundError(f"Checkpoint not found: {checkpoint_mask_estimator_path}")
 
-	checkpoint = torch.load(checkpoint_path, map_location=device)
-	base_channels = int(checkpoint.get("base_channels", 64))
+	checkpoint_mask_estimator = torch.load(checkpoint_mask_estimator_path, map_location=device)
+	base_channels = int(checkpoint_mask_estimator.get("base_channels", 64))
 	model = UNetMaskEstimator(in_channels=3, out_channels=1, base_channels=base_channels).to(device)
-	model_state = checkpoint.get("model_state_dict")
+	model_state = checkpoint_mask_estimator.get("model_state_dict")
 	if model_state is None:
-		raise KeyError("Checkpoint is missing 'model_state_dict'.")
+		raise KeyError("checkpoint_mask_estimator is missing 'model_state_dict'.")
 	model.load_state_dict(model_state)
 	model.eval()
 	return model
@@ -115,7 +115,7 @@ def _next_available_output_path(path: Path) -> Path:
 def main() -> None:
 	args = parse_args()
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-	model = load_model(args.checkpoint, device)
+	model = load_model(args.checkpoint_mask_estimator, device)
 
 	dataloader = build_dataloader(
 		image_root=args.data_root,
