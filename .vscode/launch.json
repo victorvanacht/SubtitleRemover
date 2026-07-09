@@ -24,12 +24,14 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--train-root", ".\\cocodataset\\train",
-                "--validate-root", ".\\cocodataset\\validate",
-                "--batch-size", "16",
-                "--epochs", "50",
+                "--train-root", ".\\..\\cocodataset\\unlabeled2017",
+                "--validate-root", ".\\..\\cocodataset\\val2017",
+                "--batch-size", "32",
+                "--epochs", "10",
                 "--num-workers", "4",
-                "--learning-rate", "1e-3"
+                "--learning-rate", "1e-3",
+                "--max-train-samples", "10000",
+                "--max-validation-samples", "10000"
             ]
         },
         {

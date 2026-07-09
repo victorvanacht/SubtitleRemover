@@ -249,12 +249,12 @@ class SubtitleTrainingDataset(Dataset[SubtitleSample]):
 		angle, subtitle_x, subtitle_y, rotated, _ = best_candidate
 		mask_image.paste(rotated, (subtitle_x, subtitle_y), rotated)
 
-		alpha = self.random.uniform(0.35, 0.95)
+		alpha = self.random.uniform(0.35, 1.0)
 		color = np.array(
 			[
-				self.random.randint(160, 255),
-				self.random.randint(160, 255),
-				self.random.randint(160, 255),
+				self.random.randint(60, 255),
+				self.random.randint(60, 255),
+				self.random.randint(60, 255),
 			],
 			dtype=np.float32,
 		)
@@ -330,12 +330,18 @@ def build_dataloader(
 	shuffle: bool = True,
 	num_workers: int = 0,
 	random_seed: int | None = None,
+	max_samples: int | None = None,
 ) -> DataLoader:
 	dataset = SubtitleTrainingDataset(
 		image_root=image_root,
 		image_size=image_size,
 		random_seed=random_seed,
 	)
+	
+	# Apply sample limit if specified
+	if max_samples is not None and max_samples > 0:
+		dataset = torch.utils.data.Subset(dataset, range(min(max_samples, len(dataset))))
+	
 	return DataLoader(
 		dataset,
 		batch_size=batch_size,

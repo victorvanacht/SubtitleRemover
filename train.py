@@ -180,6 +180,8 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--save-path", type=Path, default=Path(".\\artifacts\\last.pt"))
 	parser.add_argument("--best-path", type=Path, default=Path(".\\artifacts\\best.pt"))
 	parser.add_argument("--base-channels", type=int, default=64)
+	parser.add_argument("--max-train-samples", type=int, default=1000, help="Maximum number of training samples to use (default: 1000).")
+	parser.add_argument("--max-validation-samples", type=int, default=1000, help="Maximum number of validation samples to use (default: 1000).")
 	parser.add_argument("--amp", action="store_true", help="Enable mixed-precision training when CUDA is available.")
 	parser.add_argument(
 		"--show-examples",
@@ -212,6 +214,7 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader]:
 		shuffle=True,
 		num_workers=args.num_workers,
 		random_seed=args.seed,
+		max_samples=args.max_train_samples,
 	)
 	validate_loader = build_dataloader(
 		image_root=args.validate_root,
@@ -220,6 +223,7 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader]:
 		shuffle=False,
 		num_workers=args.num_workers,
 		random_seed=args.seed + 1,
+		max_samples=args.max_validation_samples,
 	)
 	return train_loader, validate_loader
 
