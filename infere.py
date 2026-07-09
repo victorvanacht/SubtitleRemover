@@ -15,17 +15,17 @@ from unet_utils import UNet
 
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Run mask estimator and pixel infiller inference.")
-	parser.add_argument("--data-root", type=Path, default=Path(".\\cocodataset\\validate"))
-	parser.add_argument("--checkpoint-mask-estimator", type=Path, default=Path(".\\artifacts\\mask_estimator_best.pt"))
-	parser.add_argument("--checkpoint-infiller", type=Path, default=Path(".\\artifacts\\infiller_best.pt"))
-	parser.add_argument("--output", type=Path, default=Path(".\\artifacts\\inference_preview.png"))
-	parser.add_argument("--num-examples", type=int, default=4)
-	parser.add_argument("--batch-size", type=int, default=4)
-	parser.add_argument("--height", type=int, default=256)
-	parser.add_argument("--width", type=int, default=256)
-	parser.add_argument("--num-workers", type=int, default=0)
-	parser.add_argument("--seed", type=int, default=1337)
-	parser.add_argument("--threshold", type=float, default=0.5)
+	parser.add_argument("--data-root", type=Path, default=Path(".\\cocodataset\\validate"), help="Path to dataset directory for inference.")
+	parser.add_argument("--checkpoint-mask-estimator", type=Path, default=Path(".\\artifacts\\mask_estimator_best.pt"), help="Path to mask estimator checkpoint file.")
+	parser.add_argument("--checkpoint-infiller", type=Path, default=Path(".\\artifacts\\infiller_best.pt"), help="Path to pixel infiller checkpoint file.")
+	parser.add_argument("--output", type=Path, default=Path(".\\artifacts\\inference_preview.png"), help="Path to save inference preview grid image.")
+	parser.add_argument("--num-examples", type=int, default=4, help="Number of examples to display in preview grid (default: 4).")
+	parser.add_argument("--batch-size", type=int, default=4, help="Batch size for inference (default: 4).")
+	parser.add_argument("--height", type=int, default=256, help="Input image height in pixels (default: 256, must match training height).")
+	parser.add_argument("--width", type=int, default=256, help="Input image width in pixels (default: 256, must match training width).")
+	parser.add_argument("--num-workers", type=int, default=0, help="Number of workers for data loading (default: 0, set to >0 for parallel loading).")
+	parser.add_argument("--seed", type=int, default=1337, help="Random seed for reproducibility (default: 1337).")
+	parser.add_argument("--threshold", type=float, default=0.5, help="Threshold for binarizing mask predictions (default: 0.5, range: 0.0-1.0).")
 	return parser.parse_args()
 
 
