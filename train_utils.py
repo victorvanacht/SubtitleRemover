@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import argparse
+import math
 import random
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -167,3 +170,180 @@ def try_resume_from_checkpoint(
 	start_epoch = last_epoch + 1
 	print(f"Resumed training from checkpoint: {checkpoint_path} (last_epoch={last_epoch})")
 	return start_epoch, best_val_loss
+
+
+@dataclass
+class TrainingConfig:
+	"""Configuration for model training with customizable model-specific logic."""
+	model_name: str
+	description: str
+	loss_fn: nn.Module
+	in_channels: int
+	out_channels: int
+	extract_model_inputs: callable
+	extract_targets: callable | None = None
+	compute_metric: callable | None = None
+	metric_name: str = "metric"
+	info_text: str = ""
+
+
+def train_model(config: TrainingConfig, args: argparse.Namespace) -> None:
+	"""Generic training loop for models with customizable data extraction and metrics.
+	
+	Args:
+		config: TrainingConfig with model-specific logic
+		args: Training arguments (from argparse)
+	"""
+	set_seed(args.seed)
+
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	use_amp = args.amp and device.type == "cuda"
+	train_loader, validate_loader = build_loaders(args)
+
+	from unet_utils import UNet
+
+	model = UNet(in_channels=config.in_channels, out_channels=config.out_channels, base_channels=args.base_channels).to(device)
+	optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+	scaler = torch.amp.GradScaler("cuda") if use_amp else None
+	start_epoch, best_val_loss = try_resume_from_checkpoint(
+		model=model,
+		optimizer=optimizer,
+		checkpoint_path=args.save_path,
+		device=device,
+	)
+
+	print(f"Training on device: {device}")
+	print(f"Training samples: {len(train_loader.dataset)}")
+	print(f"Validation samples: {len(validate_loader.dataset)}")
+	if config.info_text:
+		print(config.info_text)
+
+	if args.show_examples > 0:
+		preview_batch = next(iter(train_loader))
+		preview_generated_samples(
+			batch=preview_batch,
+			max_examples=args.show_examples,
+			save_path=args.save_example_grid,
+		)
+
+	end_epoch = start_epoch + args.epochs - 1
+	for epoch in range(start_epoch, end_epoch + 1):
+		train_loss, train_metric = _run_training_epoch(
+			model=model,
+			loader=train_loader,
+			device=device,
+			optimizer=optimizer,
+			loss_fn=config.loss_fn,
+			scaler=scaler,
+			use_amp=use_amp,
+			extract_inputs=config.extract_model_inputs,
+			extract_targets=config.extract_targets,
+			compute_metric=config.compute_metric,
+		)
+		val_loss, val_metric = _run_training_epoch(
+			model=model,
+			loader=validate_loader,
+			device=device,
+			optimizer=None,
+			loss_fn=config.loss_fn,
+			scaler=None,
+			use_amp=use_amp,
+			extract_inputs=config.extract_model_inputs,
+			extract_targets=config.extract_targets,
+			compute_metric=config.compute_metric,
+		)
+
+		print(
+			f"Epoch {epoch:03d}/{end_epoch:03d} "
+			f"train_loss={train_loss:.4f} train_{config.metric_name}={train_metric:.4f} "
+			f"val_loss={val_loss:.4f} val_{config.metric_name}={val_metric:.4f}"
+		)
+
+		# Always save as last checkpoint
+		save_checkpoint(model=model, optimizer=optimizer, args=args, epoch=epoch, best_val_loss=best_val_loss, save_as_best=False)
+		print(f"Saved checkpoint to: {args.save_path}")
+		
+		# Save as best checkpoint if validation loss improved
+		if val_loss < best_val_loss:
+			best_val_loss = val_loss
+			save_checkpoint(model=model, optimizer=optimizer, args=args, epoch=epoch, best_val_loss=best_val_loss, save_as_best=True)
+			print(f"Saved best checkpoint to: {args.best_path}")
+
+
+def _run_training_epoch(
+	model: nn.Module,
+	loader: DataLoader,
+	device: torch.device,
+	optimizer: torch.optim.Optimizer | None,
+	loss_fn: nn.Module,
+	scaler: torch.amp.GradScaler | None,
+	use_amp: bool,
+	extract_inputs: callable,
+	extract_targets: callable | None,
+	compute_metric: callable | None,
+) -> tuple[float, float]:
+	"""Run a single training or validation epoch.
+	
+	Args:
+		model: The model to train/evaluate
+		loader: DataLoader for the epoch
+		device: Device to use (cuda or cpu)
+		optimizer: Optimizer for training (None for validation)
+		loss_fn: Loss function
+		scaler: GradScaler for mixed precision (None if not using AMP)
+		use_amp: Whether to use automatic mixed precision
+		extract_inputs: Callable to extract model inputs from batch
+		extract_targets: Callable to extract targets from batch (None if not needed)
+		compute_metric: Callable to compute metric from predictions and targets
+	
+	Returns:
+		Tuple of (average_loss, average_metric)
+	"""
+	is_training = optimizer is not None
+	model.train(mode=is_training)
+	total_loss = 0.0
+	total_metric = 0.0
+	total_examples = 0
+
+	context_manager = torch.enable_grad if is_training else torch.no_grad
+	with context_manager():
+		for batch in loader:
+			inputs = extract_inputs(batch).to(device, non_blocking=True)
+			batch_size = inputs.size(0)
+
+			if is_training:
+				optimizer.zero_grad(set_to_none=True)
+
+			with torch.amp.autocast(device_type=device.type, enabled=use_amp):
+				predictions = model(inputs)
+				
+				if extract_targets is not None:
+					targets = extract_targets(batch).to(device, non_blocking=True)
+					loss = loss_fn(predictions, targets)
+				else:
+					# For loss functions that take predictions directly
+					loss = loss_fn(predictions, batch)
+
+			if is_training and optimizer is not None:
+				if scaler is not None:
+					scaler.scale(loss).backward()
+					scaler.step(optimizer)
+					scaler.update()
+				else:
+					loss.backward()
+					optimizer.step()
+
+			total_loss += loss.detach().item() * batch_size
+			
+			if compute_metric is not None:
+				if extract_targets is not None:
+					metric = compute_metric(predictions.detach(), targets)
+				else:
+					metric = compute_metric(predictions.detach(), batch)
+				total_metric += metric.item() * batch_size
+			
+			total_examples += batch_size
+
+	if total_examples == 0:
+		return math.nan, math.nan
+	return total_loss / total_examples, total_metric / total_examples
