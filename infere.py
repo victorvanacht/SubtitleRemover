@@ -9,8 +9,8 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 
 from data_generator import build_dataloader
-from train_mask_estimator import SUBTITLED_CHANNEL_END, SUBTITLED_CHANNEL_START, UNetMaskEstimator
-from train_infiller import UNetPixelInfiller
+from train_mask_estimator import SUBTITLED_CHANNEL_END, SUBTITLED_CHANNEL_START
+from unet_utils import UNet
 
 
 def parse_args() -> argparse.Namespace:
@@ -74,13 +74,13 @@ def dilate_mask(mask: torch.Tensor, iterations: int = 1) -> torch.Tensor:
 	return dilated_mask
 
 
-def load_model(checkpoint_mask_estimator_path: Path, device: torch.device) -> UNetMaskEstimator:
+def load_model(checkpoint_mask_estimator_path: Path, device: torch.device) -> UNet:
 	if not checkpoint_mask_estimator_path.exists():
 		raise FileNotFoundError(f"Checkpoint not found: {checkpoint_mask_estimator_path}")
 
 	checkpoint_mask_estimator = torch.load(checkpoint_mask_estimator_path, map_location=device)
 	base_channels = int(checkpoint_mask_estimator.get("base_channels", 64))
-	model = UNetMaskEstimator(in_channels=3, out_channels=1, base_channels=base_channels).to(device)
+	model = UNet(in_channels=3, out_channels=1, base_channels=base_channels).to(device)
 	model_state = checkpoint_mask_estimator.get("model_state_dict")
 	if model_state is None:
 		raise KeyError("checkpoint_mask_estimator is missing 'model_state_dict'.")
@@ -89,13 +89,13 @@ def load_model(checkpoint_mask_estimator_path: Path, device: torch.device) -> UN
 	return model
 
 
-def load_infiller_model(checkpoint_infiller_path: Path, device: torch.device) -> UNetPixelInfiller:
+def load_infiller_model(checkpoint_infiller_path: Path, device: torch.device) -> UNet:
 	if not checkpoint_infiller_path.exists():
 		raise FileNotFoundError(f"Checkpoint not found: {checkpoint_infiller_path}")
 
 	checkpoint_infiller = torch.load(checkpoint_infiller_path, map_location=device)
 	base_channels = int(checkpoint_infiller.get("base_channels", 64))
-	model = UNetPixelInfiller(in_channels=4, out_channels=3, base_channels=base_channels).to(device)
+	model = UNet(in_channels=4, out_channels=3, base_channels=base_channels).to(device)
 	model_state = checkpoint_infiller.get("model_state_dict")
 	if model_state is None:
 		raise KeyError("checkpoint_infiller is missing 'model_state_dict'.")

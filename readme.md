@@ -16,7 +16,7 @@ conda activate SubtitleRemover
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu132
 python checkpytorchgpu.py
 ```
-4. Install required Python packages
+4. Install other required Python packages
 ```
 pip install -r requirements.txt
 ```
