@@ -27,11 +27,44 @@
                 "--train-root", ".\\..\\cocodataset\\unlabeled2017",
                 "--validate-root", ".\\..\\cocodataset\\val2017",
                 "--batch-size", "32",
-                "--epochs", "10",
+                "--epochs", "100",
                 "--num-workers", "4",
                 "--learning-rate", "1e-3",
-                "--max-train-samples", "10000",
-                "--max-validation-samples", "10000"
+                "--max-train-samples", "1000",
+                "--max-validation-samples", "1000"
+            ]
+        },
+        {
+            "name": "Train Infiller (Default)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train_infiller.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--train-root", ".\\cocodataset\\train",
+                "--validate-root", ".\\cocodataset\\validate",
+                "--batch-size", "8",
+                "--epochs", "20",
+                "--num-workers", "0"
+            ]
+        },
+        {
+            "name": "Train Infiller (Custom Settings)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train_infiller.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--train-root", ".\\..\\cocodataset\\unlabeled2017",
+                "--validate-root", ".\\..\\cocodataset\\val2017",
+                "--batch-size", "32",
+                "--epochs", "100",
+                "--num-workers", "4",
+                "--learning-rate", "1e-3",
+                "--max-train-samples", "1000",
+                "--max-validation-samples", "1000"
             ]
         },
         {
@@ -43,7 +76,8 @@
             "justMyCode": true,
             "args": [
                 "--data-root", ".\\cocodataset\\validate",
-                "--checkpoint_mask_estimator", ".\\artifacts\\best_mask_estimator.pt",
+                "--checkpoint-mask-estimator", ".\\artifacts\\mask_estimator_best.pt",
+                "--checkpoint-infiller", ".\\artifacts\\infiller_best.pt",
                 "--output", ".\\artifacts\\inference_preview.png",
                 "--num-examples", "4",
                 "--batch-size", "4",
@@ -60,7 +94,8 @@
             "justMyCode": true,
             "args": [
                 "--data-root", ".\\cocodataset\\validate",
-                "--checkpoint_mask_estimator", ".\\artifacts\\last_mask_estimator.pt",
+                "--checkpoint-mask-estimator", ".\\artifacts\\mask_estimator_last.pt",
+                "--checkpoint-infiller", ".\\artifacts\\infiller_last.pt",
                 "--output", ".\\artifacts\\inference_preview.png",
                 "--num-examples", "4",
                 "--batch-size", "4",
