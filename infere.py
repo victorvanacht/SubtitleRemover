@@ -219,7 +219,7 @@ def main() -> None:
 	                             subtitled_images.to(device, non_blocking=True)], dim=1)
 	with torch.no_grad():
 		inpainted_images = infiller_model(infiller_input).cpu()
-		inpainted_images = torch.sigmoid(inpainted_images)  # Ensure output is in [0, 1]
+		inpainted_images = inpainted_images.clamp(0.0, 1.0)
 
 	# Step 3: Blend inpainted and subtitled images using the mask
 	print("Blending images...")
