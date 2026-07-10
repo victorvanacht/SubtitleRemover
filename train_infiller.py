@@ -81,14 +81,24 @@ def extract_mask_from_batch(batch: dict[str, torch.Tensor | list]) -> torch.Tens
 
 
 def masked_loss_wrapper(predictions: torch.Tensor, batch: dict) -> torch.Tensor:
-	"""L1 Loss that applies masking to focus on affected regions."""
+	"""Weighted L1 Loss: masked pixels (100x weight) + other pixels (1x weight).
+	
+	This balances learning to fill masked regions while maintaining quality in unaffected areas.
+	Masked pixels get 100x higher per-pixel weight since they're much less numerous.
+	"""
 	device = predictions.device
 	targets = extract_targets(batch).to(device, non_blocking=True)
 	mask = extract_mask_from_batch(batch).to(device, non_blocking=True)
-	masked_predictions = predictions * mask
-	masked_targets = targets * mask
-	loss_fn = nn.L1Loss()
-	return loss_fn(masked_predictions, masked_targets)
+	
+	# Compute per-pixel L1 loss
+	pixel_loss = torch.abs(predictions - targets)
+	
+	# Weight: masked pixels get 100x weight, other pixels get 1x weight
+	weight_map = mask * 100.0 + (1.0 - mask) * 1.0
+	
+	# Apply weights and compute mean
+	weighted_loss = (pixel_loss * weight_map).mean()
+	return weighted_loss
 
 
 def compute_masked_mae_metric(predictions: torch.Tensor, batch: dict) -> torch.Tensor:
@@ -119,6 +129,7 @@ def main() -> None:
 			f"Model input channels: mask + subtitled RGB ({MASK_CHANNEL_START}-{SUBTITLED_CHANNEL_END - 1})\n"
 			f"Model output: original RGB ({ORIGINAL_CHANNEL_START}-{ORIGINAL_CHANNEL_END - 1})"
 		),
+		use_batch_normalization=False,
 	)
 
 	train_model(config, args)

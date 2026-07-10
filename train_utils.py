@@ -185,6 +185,7 @@ class TrainingConfig:
 	compute_metric: callable | None = None
 	metric_name: str = "metric"
 	info_text: str = ""
+	use_batch_normalization: bool = True
 
 
 def train_model(config: TrainingConfig, args: argparse.Namespace) -> None:
@@ -202,7 +203,7 @@ def train_model(config: TrainingConfig, args: argparse.Namespace) -> None:
 
 	from unet_utils import UNet
 
-	model = UNet(in_channels=config.in_channels, out_channels=config.out_channels, base_channels=args.base_channels).to(device)
+	model = UNet(in_channels=config.in_channels, out_channels=config.out_channels, base_channels=args.base_channels, use_batch_normalization=config.use_batch_normalization).to(device)
 	optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 	scaler = torch.amp.GradScaler("cuda") if use_amp else None
 	start_epoch, best_val_loss = try_resume_from_checkpoint(

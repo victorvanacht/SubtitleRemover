@@ -80,7 +80,7 @@ def load_model(checkpoint_mask_estimator_path: Path, device: torch.device) -> UN
 
 	checkpoint_mask_estimator = torch.load(checkpoint_mask_estimator_path, map_location=device)
 	base_channels = int(checkpoint_mask_estimator.get("base_channels", 64))
-	model = UNet(in_channels=3, out_channels=1, base_channels=base_channels).to(device)
+	model = UNet(in_channels=3, out_channels=1, base_channels=base_channels, use_batch_normalization=True).to(device)
 	model_state = checkpoint_mask_estimator.get("model_state_dict")
 	if model_state is None:
 		raise KeyError("checkpoint_mask_estimator is missing 'model_state_dict'.")
@@ -95,7 +95,7 @@ def load_infiller_model(checkpoint_infiller_path: Path, device: torch.device) ->
 
 	checkpoint_infiller = torch.load(checkpoint_infiller_path, map_location=device)
 	base_channels = int(checkpoint_infiller.get("base_channels", 64))
-	model = UNet(in_channels=4, out_channels=3, base_channels=base_channels).to(device)
+	model = UNet(in_channels=4, out_channels=3, base_channels=base_channels, use_batch_normalization=False).to(device)
 	model_state = checkpoint_infiller.get("model_state_dict")
 	if model_state is None:
 		raise KeyError("checkpoint_infiller is missing 'model_state_dict'.")
