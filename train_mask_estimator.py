@@ -89,6 +89,7 @@ def main() -> None:
 		compute_metric=dice_score_from_logits,
 		metric_name="dice",
 		info_text=f"Model input channels: subtitled RGB only ({SUBTITLED_CHANNEL_START + 1}-{SUBTITLED_CHANNEL_END})",
+		use_batch_normalization=True,
 	)
 
 	train_model(config, args)

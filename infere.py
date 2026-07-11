@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import random
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,7 @@ from scipy import ndimage
 
 from data_generator import build_dataloader
 from train_mask_estimator import SUBTITLED_CHANNEL_END, SUBTITLED_CHANNEL_START
+from train_utils import dilate_mask
 from unet_utils import UNet
 
 
@@ -24,7 +26,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--height", type=int, default=256, help="Input image height in pixels (default: 256, must match training height).")
 	parser.add_argument("--width", type=int, default=256, help="Input image width in pixels (default: 256, must match training width).")
 	parser.add_argument("--num-workers", type=int, default=0, help="Number of workers for data loading (default: 0, set to >0 for parallel loading).")
-	parser.add_argument("--seed", type=int, default=1337, help="Random seed for reproducibility (default: 1337).")
+	parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility (default: None for random seeds each run).")
 	parser.add_argument("--threshold", type=float, default=0.5, help="Threshold for binarizing mask predictions (default: 0.5, range: 0.0-1.0).")
 	return parser.parse_args()
 
@@ -49,38 +51,13 @@ def blend_images_with_mask(subtitled: torch.Tensor, inpainted: torch.Tensor, mas
 	return blended
 
 
-def dilate_mask(mask: torch.Tensor, iterations: int = 1) -> torch.Tensor:
-	"""Dilate the mask by 1 pixel in all directions for each iteration.
-	
-	Args:
-		mask: Tensor of shape (batch_size, 1, height, width)
-		iterations: Number of dilation iterations (default: 1 for 1 pixel expansion)
-	
-	Returns:
-		Dilated mask tensor
-	"""
-	kernel = ndimage.generate_binary_structure(2, 2)  # 3x3 kernel with 8-connectivity
-	dilated_mask = mask.clone()
-	
-	for batch_idx in range(dilated_mask.shape[0]):
-		# Extract single image mask (remove batch and channel dims for processing)
-		mask_2d = dilated_mask[batch_idx, 0].numpy()
-		# Apply dilation
-		for _ in range(iterations):
-			mask_2d = ndimage.binary_dilation(mask_2d, structure=kernel).astype(np.float32)
-		# Put back in tensor
-		dilated_mask[batch_idx, 0] = torch.from_numpy(mask_2d)
-	
-	return dilated_mask
-
-
 def load_model(checkpoint_mask_estimator_path: Path, device: torch.device) -> UNet:
 	if not checkpoint_mask_estimator_path.exists():
 		raise FileNotFoundError(f"Checkpoint not found: {checkpoint_mask_estimator_path}")
 
 	checkpoint_mask_estimator = torch.load(checkpoint_mask_estimator_path, map_location=device)
 	base_channels = int(checkpoint_mask_estimator.get("base_channels", 64))
-	model = UNet(in_channels=3, out_channels=1, base_channels=base_channels).to(device)
+	model = UNet(in_channels=3, out_channels=1, base_channels=base_channels, use_batch_normalization=True).to(device)
 	model_state = checkpoint_mask_estimator.get("model_state_dict")
 	if model_state is None:
 		raise KeyError("checkpoint_mask_estimator is missing 'model_state_dict'.")
@@ -95,7 +72,7 @@ def load_infiller_model(checkpoint_infiller_path: Path, device: torch.device) ->
 
 	checkpoint_infiller = torch.load(checkpoint_infiller_path, map_location=device)
 	base_channels = int(checkpoint_infiller.get("base_channels", 64))
-	model = UNet(in_channels=4, out_channels=3, base_channels=base_channels).to(device)
+	model = UNet(in_channels=4, out_channels=3, base_channels=base_channels, use_batch_normalization=False).to(device)
 	model_state = checkpoint_infiller.get("model_state_dict")
 	if model_state is None:
 		raise KeyError("checkpoint_infiller is missing 'model_state_dict'.")
@@ -183,13 +160,16 @@ def main() -> None:
 	print("Loading infiller model...")
 	infiller_model = load_infiller_model(args.checkpoint_infiller, device)
 
+	# Use random seed if not specified for different results each run
+	seed = args.seed if args.seed is not None else random.randint(0, 2**31 - 1)
+
 	dataloader = build_dataloader(
 		image_root=args.data_root,
 		batch_size=max(args.batch_size, args.num_examples),
 		image_size=(args.width, args.height),
 		shuffle=True,
 		num_workers=args.num_workers,
-		random_seed=args.seed,
+		random_seed=seed,
 	)
 
 	batch = next(iter(dataloader))
@@ -211,7 +191,7 @@ def main() -> None:
 	
 	# Dilate mask by 1 pixel in all directions for better edge coverage
 	print("Dilating masks...")
-	pred_masks = dilate_mask(pred_masks, iterations=1)
+	#pred_masks = dilate_mask(pred_masks, iterations=1)
 	
 	# Step 2: Inpaint using infiller model (mask + subtitled RGB as input)
 	print("Inpainting pixels...")
@@ -219,7 +199,7 @@ def main() -> None:
 	                             subtitled_images.to(device, non_blocking=True)], dim=1)
 	with torch.no_grad():
 		inpainted_images = infiller_model(infiller_input).cpu()
-		inpainted_images = torch.sigmoid(inpainted_images)  # Ensure output is in [0, 1]
+		inpainted_images = inpainted_images.clamp(0.0, 1.0)
 
 	# Step 3: Blend inpainted and subtitled images using the mask
 	print("Blending images...")
