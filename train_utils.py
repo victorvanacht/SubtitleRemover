@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
+from scipy import ndimage
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -24,6 +25,31 @@ def _tensor_rgb_to_uint8(image_tensor: torch.Tensor) -> np.ndarray:
 def _tensor_mask_to_uint8(mask_tensor: torch.Tensor) -> np.ndarray:
 	array = mask_tensor.detach().cpu().clamp(0.0, 1.0).squeeze(0).numpy()
 	return (array * 255.0).round().astype(np.uint8)
+
+
+def dilate_mask(mask: torch.Tensor, iterations: int = 1) -> torch.Tensor:
+	"""Dilate the mask by 1 pixel in all directions for each iteration.
+	
+	Args:
+		mask: Tensor of shape (batch_size, 1, height, width)
+		iterations: Number of dilation iterations (default: 1 for 1 pixel expansion)
+	
+	Returns:
+		Dilated mask tensor
+	"""
+	kernel = ndimage.generate_binary_structure(2, 2)  # 3x3 kernel with 8-connectivity
+	dilated_mask = mask.clone()
+	
+	for batch_idx in range(dilated_mask.shape[0]):
+		# Extract single image mask (remove batch and channel dims for processing)
+		mask_2d = dilated_mask[batch_idx, 0].numpy()
+		# Apply dilation
+		for _ in range(iterations):
+			mask_2d = ndimage.binary_dilation(mask_2d, structure=kernel).astype(np.float32)
+		# Put back in tensor
+		dilated_mask[batch_idx, 0] = torch.from_numpy(mask_2d)
+	
+	return dilated_mask
 
 
 def build_example_grid(batch: dict[str, torch.Tensor | list[str] | list[float] | list[int]], max_examples: int) -> Image.Image:
@@ -186,6 +212,7 @@ class TrainingConfig:
 	metric_name: str = "metric"
 	info_text: str = ""
 	use_batch_normalization: bool = True
+	mask_dilation_iterations: int = 1
 
 
 def train_model(config: TrainingConfig, args: argparse.Namespace) -> None:

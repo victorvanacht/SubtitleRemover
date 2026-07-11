@@ -15,6 +15,7 @@ from data_generator import build_dataloader
 from unet_utils import UNet
 from train_utils import (
 	TrainingConfig,
+	dilate_mask,
 	train_model,
 )
 
@@ -73,47 +74,47 @@ def extract_targets(batch: dict[str, torch.Tensor | list]) -> torch.Tensor:
 	return features[:, ORIGINAL_CHANNEL_START:ORIGINAL_CHANNEL_END]
 
 
-def extract_mask_from_batch(batch: dict[str, torch.Tensor | list]) -> torch.Tensor:
-	features = batch["features"]
-	if not isinstance(features, torch.Tensor):
-		raise TypeError("Expected batch['features'] to be a torch.Tensor")
-	return features[:, MASK_CHANNEL_START:MASK_CHANNEL_END]
-
-
-def masked_loss_wrapper(predictions: torch.Tensor, batch: dict) -> torch.Tensor:
-	"""Weighted L1 Loss: masked pixels (100x weight) + other pixels (1x weight).
-	
-	This balances learning to fill masked regions while maintaining quality in unaffected areas.
-	Masked pixels get 100x higher per-pixel weight since they're much less numerous.
-	"""
-	device = predictions.device
-	targets = extract_targets(batch).to(device, non_blocking=True)
-	mask = extract_mask_from_batch(batch).to(device, non_blocking=True)
-	
-	# Compute per-pixel L1 loss
-	pixel_loss = torch.abs(predictions - targets)
-	
-	# Weight: masked pixels get 100x weight, other pixels get 1x weight
-	weight_map = mask * 100.0 + (1.0 - mask) * 1.0
-	
-	# Apply weights and compute mean
-	weighted_loss = (pixel_loss * weight_map).mean()
-	return weighted_loss
-
-
-def compute_masked_mae_metric(predictions: torch.Tensor, batch: dict) -> torch.Tensor:
-	"""Compute MAE metric for the generic training loop."""
-	device = predictions.device
-	targets = extract_targets(batch).to(device, non_blocking=True)
-	mask = extract_mask_from_batch(batch).to(device, non_blocking=True)
-	epsilon = 1e-6
-	mae = torch.abs(predictions - targets)
-	masked_mae_val = (mae * mask).sum(dim=(1, 2, 3)) / (mask.sum(dim=(1, 2, 3)) + epsilon)
-	return masked_mae_val.mean()
-
-
 def main() -> None:
 	args = parse_args()
+
+	# Define extract_dilated_mask as a closure that will capture mask_dilation_iterations
+	def extract_dilated_mask(batch: dict[str, torch.Tensor | list], dilation_iterations: int) -> torch.Tensor:
+		"""Extract mask from batch and apply dilation."""
+		features = batch["features"]
+		if not isinstance(features, torch.Tensor):
+			raise TypeError("Expected batch['features'] to be a torch.Tensor")
+		mask = features[:, MASK_CHANNEL_START:MASK_CHANNEL_END]
+		return dilate_mask(mask, iterations=dilation_iterations)
+
+	def masked_loss_wrapper(predictions: torch.Tensor, batch: dict) -> torch.Tensor:
+		"""Weighted L1 Loss with dilated mask: masked pixels (100x weight) + other pixels (1x weight).
+		
+		This balances learning to fill masked regions while maintaining quality in unaffected areas.
+		Masked pixels get 100x higher per-pixel weight since they're much less numerous.
+		"""
+		device = predictions.device
+		targets = extract_targets(batch).to(device, non_blocking=True)
+		mask = extract_dilated_mask(batch, config.mask_dilation_iterations).to(device, non_blocking=True)
+		
+		# Compute per-pixel L1 loss
+		pixel_loss = torch.abs(predictions - targets)
+		
+		# Weight: masked pixels get 1000x weight, other pixels get 1x weight
+		weight_map = mask * 1000.0 + (1.0 - mask) * 1.0
+		
+		# Apply weights and compute mean
+		weighted_loss = (pixel_loss * weight_map).mean()
+		return weighted_loss
+
+	def compute_masked_mae_metric(predictions: torch.Tensor, batch: dict) -> torch.Tensor:
+		"""Compute MAE metric with dilated mask for the generic training loop."""
+		device = predictions.device
+		targets = extract_targets(batch).to(device, non_blocking=True)
+		mask = extract_dilated_mask(batch, config.mask_dilation_iterations).to(device, non_blocking=True)
+		epsilon = 1e-6
+		mae = torch.abs(predictions - targets)
+		masked_mae_val = (mae * mask).sum(dim=(1, 2, 3)) / (mask.sum(dim=(1, 2, 3)) + epsilon)
+		return masked_mae_val.mean()
 
 	config = TrainingConfig(
 		model_name="Pixel Infiller",
@@ -130,6 +131,7 @@ def main() -> None:
 			f"Model output: original RGB ({ORIGINAL_CHANNEL_START}-{ORIGINAL_CHANNEL_END - 1})"
 		),
 		use_batch_normalization=False,
+		mask_dilation_iterations=2,
 	)
 
 	train_model(config, args)
